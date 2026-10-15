@@ -415,6 +415,8 @@ def detect_enforcement_failure(trace: Sequence[Mapping[str, Any]], answer: Mappi
     ones — so the shared contract is the ref grammar (`evt_ref`/`span_ref`/
     `anchor_ref`), not "a seq int"."""
     invariant = card.get("invariant") if isinstance(card, Mapping) else None
+    if isinstance(card, Mapping) and card.get("defense_event") and card.get("defense_event") != "gateway.denied":
+        return []
     hits: list[tuple[list[str], str]] = []
     for g in group_calls(trace):
         if not g.mutations or g.enforced is None:
@@ -502,6 +504,9 @@ def _hook_write_violation(trace, answer, card) -> list[tuple[list[str], str]]:
         )
         if not is_write:
             continue
+        if g.enforced and isinstance(g.enforced.get("p"), Mapping):
+            if g.enforced["p"].get("verdict_applied") == "deny":
+                continue
 
         cmd_seq = _seq(g.command)
         if cmd_seq is None:
@@ -531,6 +536,12 @@ def _hook_protocol_misuse(trace, answer, card) -> list[tuple[list[str], str]]:
             continue
         p = g.command["p"]
         if p.get("server") == "slides" and p.get("tool") == "get_frame":
+            if g.enforced and isinstance(g.enforced.get("p"), Mapping):
+                if g.enforced["p"].get("verdict_applied") == "deny":
+                    continue
+            if g.tool_call and isinstance(g.tool_call.get("p"), Mapping):
+                if g.tool_call["p"].get("lease_used"):
+                    continue
             lease_id = p.get("lease_id")
             if not lease_id:
                 cmd_seq = _seq(g.command)
@@ -676,6 +687,9 @@ def _hook_authority_exceeded(trace, answer, card) -> list[tuple[list[str], str]]
         )
         if not is_write:
             continue
+        if g.enforced and isinstance(g.enforced.get("p"), Mapping):
+            if g.enforced["p"].get("verdict_applied") == "deny":
+                continue
         args = p.get("args") or {}
         target = args.get("learner") or args.get("learner_id") or args.get("target")
         if target is None:
